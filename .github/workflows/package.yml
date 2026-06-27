@@ -54,8 +54,8 @@ jobs:
           $archive = "hdf5-$hdf5Version.tar.gz"
           Invoke-WebRequest -Uri "https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.12/hdf5-$hdf5Version/src/$archive" -OutFile $archive
           tar -xzf $archive
-          python -m pip install ninja
-          cmake -S "hdf5-$hdf5Version" -B hdf5-build -G Ninja `
+          python -m pip install "cmake<4" ninja
+          python -m cmake -S "hdf5-$hdf5Version" -B hdf5-build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_INSTALL_PREFIX="$hdf5Root" `
             -DBUILD_SHARED_LIBS=ON `
@@ -67,7 +67,7 @@ jobs:
             -DHDF5_BUILD_FORTRAN=OFF `
             -DHDF5_ENABLE_Z_LIB_SUPPORT=OFF `
             -DHDF5_ENABLE_SZIP_SUPPORT=OFF
-          cmake --build hdf5-build --target install --config Release
+          python -m cmake --build hdf5-build --target install --config Release
           "HDF5_ROOT=$hdf5Root" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CMAKE_PREFIX_PATH=$hdf5Root" | Out-File -FilePath $env:GITHUB_ENV -Append
           "$hdf5Root\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
