@@ -71,8 +71,13 @@ jobs:
             echo Visual Studio with MSVC x64 tools was not found.
             exit /b 1
           )
-          call "%VSINSTALLDIR%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
+          call "%VSINSTALLDIR%\VC\Auxiliary\Build\vcvars64.bat"
           if errorlevel 1 exit /b 1
+          where cl
+          if errorlevel 1 (
+            echo MSVC cl.exe was not found after vcvars64.bat initialization.
+            exit /b 1
+          )
           set CC=cl
           set CXX=cl
           python -m build --wheel --outdir dist --config-setting=setup-args="-Dhdf5-root=%HDF5_ROOT%"
