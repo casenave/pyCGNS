@@ -64,6 +64,18 @@ jobs:
       - name: Install build frontend
         run: python -m pip install --upgrade pip build
 
+      - name: Install Linux wheel repair tool
+        if: runner.os == 'Linux'
+        run: python -m pip install auditwheel
+
+      - name: Install macOS wheel repair tool
+        if: runner.os == 'macOS'
+        run: python -m pip install delocate
+
+      - name: Install Windows wheel repair tool
+        if: runner.os == 'Windows'
+        run: python -m pip install delvewheel
+
       - name: Build wheel
         if: runner.os != 'Windows'
         run: python -m build --wheel --outdir dist
@@ -73,16 +85,48 @@ jobs:
         shell: pwsh
         run: python -m build --wheel --outdir dist --config-setting=setup-args="-Dhdf5-root=$env:HDF5_ROOT"
 
+      - name: Bundle Linux wheel dependencies
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p wheelhouse
+          for whl in dist/*.whl; do
+            auditwheel repair "$whl" -w wheelhouse/
+          done
+
+      - name: Bundle macOS wheel dependencies
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p wheelhouse
+          for whl in dist/*.whl; do
+            delocate-wheel -w wheelhouse "$whl"
+          done
+
+      - name: Bundle Windows wheel dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force wheelhouse | Out-Null
+          Get-ChildItem dist\*.whl | ForEach-Object {
+            python -m delvewheel repair --add-path "$env:HDF5_ROOT\bin" --wheel-dir wheelhouse $_.FullName
+          }
+
       - name: Install built wheel
         shell: bash
         run: |
-          python -m pip install "$(pwd)"/dist/*.whl
+          python -m pip install "$(pwd)"/wheelhouse/*.whl
 
       - name: Import smoke test
         shell: bash
         run: |
           cd "${RUNNER_TEMP}"
           python -c "import CGNS; import CGNS.MAP; import CGNS.PAT; import CGNS.VAL; import CGNS.APP; print('pyCGNS import smoke test OK')"
+
+      - name: Upload repaired wheel artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: repaired-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: wheelhouse/*.whl
+          if-no-files-found: error
 
   build-sdist:
     name: Build sdist
