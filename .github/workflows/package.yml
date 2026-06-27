@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
 
     steps:
@@ -34,6 +34,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libhdf5-dev pkg-config
+
+      - name: Install macOS HDF5 dependency
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install hdf5 pkg-config
 
       - name: Install Windows HDF5 dependency
         if: runner.os == 'Windows'
