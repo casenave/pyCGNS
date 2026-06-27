@@ -38,7 +38,7 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           export HDF5_ROOT="${RUNNER_TEMP}/hdf5-${HDF5_VERSION}-install"
-          curl -fsSLo hdf5-$HDF5_VERSION.tar.gz "https://github.com/HDFGroup/hdf5/archive/refs/tags/$HDF5_VERSION.tar.gz"
+          curl -fsSLo hdf5-$HDF5_VERSION.tar.gz "https://github.com/HDFGroup/hdf5/releases/download/$HDF5_VERSION/hdf5-$HDF5_VERSION.tar.gz"
           gunzip < hdf5-$HDF5_VERSION.tar.gz | tar xf -
           cd hdf5-$HDF5_VERSION
           export CFLAGS="-O3 -fPIC"
@@ -54,7 +54,7 @@ jobs:
           $hdf5Version = $env:HDF5_VERSION
           $hdf5Root = Join-Path $env:RUNNER_TEMP "hdf5-$hdf5Version-install"
           $archive = "hdf5-$hdf5Version.tar.gz"
-          Invoke-WebRequest -Uri "https://github.com/HDFGroup/hdf5/archive/refs/tags/$hdf5Version.tar.gz" -OutFile $archive
+          Invoke-WebRequest -Uri "https://github.com/HDFGroup/hdf5/releases/download/$hdf5Version/hdf5-$hdf5Version.tar.gz" -OutFile $archive
           tar -xzf $archive
           python -m pip install "cmake<4" ninja
           python -m cmake -S "hdf5-$hdf5Version" -B hdf5-build -G Ninja `
