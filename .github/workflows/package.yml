@@ -1,0 +1,74 @@
+name: Package
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-wheel:
+    name: Build wheel (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Linux HDF5 dependency
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libhdf5-dev pkg-config
+
+      - name: Install Windows HDF5 dependency
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install hdf5 --no-progress -y
+          $hdf5Root = Get-ChildItem 'C:\Program Files\HDF_Group\HDF5' -Directory |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+          if (-not $hdf5Root) {
+            throw 'Unable to find Chocolatey HDF5 installation under C:\Program Files\HDF_Group\HDF5'
+          }
+          "HDF5_ROOT=$($hdf5Root.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "$($hdf5Root.FullName)\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Install build frontend
+        run: python -m pip install --upgrade pip build
+
+      - name: Build wheel
+        run: python -m build --wheel --outdir dist
+
+      - name: Install built wheel
+        shell: bash
+        run: |
+          python -m pip install dist/*.whl
+
+      - name: Import smoke test
+        run: >-
+          python -c "import CGNS; import CGNS.MAP; import CGNS.PAT; import CGNS.VAL; import CGNS.APP; print('pyCGNS import smoke test OK')"
+
+  build-sdist:
+    name: Build sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Install build frontend
+        run: python -m pip install --upgrade pip build
+      - name: Build sdist
+        run: python -m build --sdist --outdir dist
