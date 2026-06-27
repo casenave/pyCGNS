@@ -200,7 +200,7 @@ endif
 
 # Add Macro definition for HDF5 on Windows
 # _extra_macro_definition_
-if is_windows
+if is_windows and not get_option('hdf5-static')
   c_args_common += ['-D_HDF5USEDLL_', '-DH5_BUILT_AS_DYNAMIC_LIB']
 endif
 
