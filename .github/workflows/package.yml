@@ -8,6 +8,9 @@ on:
       - master
   workflow_dispatch:
 
+env:
+  HDF5_VERSION: 2.1.1
+
 jobs:
   build-wheel:
     name: Build wheel (${{ matrix.os }}, Python ${{ matrix.python-version }})
@@ -34,7 +37,6 @@ jobs:
       - name: Build Unix HDF5 dependency
         if: runner.os != 'Windows'
         run: |
-          export HDF5_VERSION=1.12.1
           export HDF5_ROOT="${RUNNER_TEMP}/hdf5-${HDF5_VERSION}-install"
           curl -fsSLO "https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-${HDF5_VERSION%.*}/hdf5-$HDF5_VERSION/src/hdf5-$HDF5_VERSION.tar.gz"
           gunzip < hdf5-$HDF5_VERSION.tar.gz | tar xf -
@@ -49,12 +51,13 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $hdf5Version = '1.12.1'
+          $hdf5Version = $env:HDF5_VERSION
           $hdf5Root = Join-Path $env:RUNNER_TEMP "hdf5-$hdf5Version-install"
           $archive = "hdf5-$hdf5Version.tar.gz"
-          Invoke-WebRequest -Uri "https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.12/hdf5-$hdf5Version/src/$archive" -OutFile $archive
+          $hdf5Series = $hdf5Version -replace '\.\d+$', ''
+          Invoke-WebRequest -Uri "https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-$hdf5Series/hdf5-$hdf5Version/src/$archive" -OutFile $archive
           tar -xzf $archive
-          python -m pip install "cmake>=3.26,<3.27" ninja
+          python -m pip install "cmake<4" ninja
           python -m cmake -S "hdf5-$hdf5Version" -B hdf5-build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_INSTALL_PREFIX="$hdf5Root" `
