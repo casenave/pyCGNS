@@ -25,6 +25,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Enable MSVC developer command prompt
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Install Linux HDF5 dependency
         if: runner.os == 'Linux'
         run: |
@@ -53,7 +57,13 @@ jobs:
         run: python -m pip install --upgrade pip build
 
       - name: Build wheel
+        if: runner.os != 'Windows'
         run: python -m build --wheel --outdir dist
+
+      - name: Build wheel
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: python -m build --wheel --outdir dist --config-setting=setup-args="-Dhdf5-root=$env:HDF5_ROOT"
 
       - name: Install built wheel
         shell: bash

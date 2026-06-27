@@ -79,7 +79,6 @@ np_dep = declare_dependency(include_directories: inc_np, compile_args: numpy_nod
 
 # Define HDF5 dependency
 # Use meson to detect headers features
-hdf5_dep = dependency('hdf5', language:'c', required: true)
 have_hdf5  = hdf5_dep.found()
 if have_hdf5
    if cc.has_header('H5pubconf.h', dependencies: hdf5_dep)
