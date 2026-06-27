@@ -7,6 +7,12 @@ py.install_sources(
   subdir: 'CGNS'
 )
 
+install_data(
+  '../licenses/HDF5-LICENSE.txt',
+  install_dir: py.get_install_dir() / 'pyCGNS.libs/licenses',
+  install_tag: 'python-runtime'
+)
+
 # Generate version.py for sdist
 meson.add_dist_script(
    ['../_build_utils/gitversion.py', '--meson-dist', '--write',

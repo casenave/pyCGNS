@@ -1,13 +1,6 @@
-# This workflow will upload a Python Package using Twine when a release is created
-# For more information see: https://help.github.com/en/actions/language-and-framework-guides/using-python-with-github-actions#publishing-to-package-registries
-
 name: Upload Python Package
 
 on:
-#  workflow_dispatch:
-#  push:
-#    branches: 
-#      - master
   release:
     types: [created]
 
@@ -15,38 +8,186 @@ env:
   HDF5_VERSION: 2.1.1
 
 jobs:
-  deploy:
+  build-wheel:
+    name: Build wheel (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
 
-    runs-on: ubuntu-latest
-    container: quay.io/pypa/manylinux_2_28_x86_64
     steps:
-    - uses: actions/checkout@v5
-    - name: Install dev dependencies
-      run: |
-        yum -y install gcc
-        curl -fsSLo hdf5-$HDF5_VERSION.tar.gz "https://github.com/HDFGroup/hdf5/releases/download/$HDF5_VERSION/hdf5-$HDF5_VERSION.tar.gz"
-        gunzip < hdf5-$HDF5_VERSION.tar.gz | tar xf -
-        /opt/python/cp310-cp310/bin/pip install build twine auditwheel 'cmake<4' ninja
-        /opt/python/cp310-cp310/bin/python -m cmake -S "hdf5-$HDF5_VERSION" -B hdf5-build -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_INSTALL_PREFIX=/usr/local \
-          -DBUILD_SHARED_LIBS=OFF \
-          -DBUILD_TESTING=OFF \
-          -DHDF5_BUILD_TOOLS=OFF \
-          -DHDF5_BUILD_EXAMPLES=OFF \
-          -DHDF5_BUILD_HL_LIB=OFF \
-          -DHDF5_BUILD_CPP_LIB=OFF \
-          -DHDF5_BUILD_FORTRAN=OFF \
-          -DHDF5_ENABLE_Z_LIB_SUPPORT=OFF \
-          -DHDF5_ENABLE_SZIP_SUPPORT=OFF
-        /opt/python/cp310-cp310/bin/python -m cmake --build hdf5-build --target install --config Release
-    - name: Build and publish
-      env:
-        TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
-        TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-      run: |
-        git config --global safe.directory "*"
-        bash .github/workflows/build-wheels.sh
-        /opt/python/cp310-cp310/bin/python -m build --wheel --outdir buildwheel/
-        /opt/python/cp310-cp310/bin/python -m build --sdist --outdir wheelhouse/
-        /opt/python/cp310-cp310/bin/python -m twine upload wheelhouse/*
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Enable Visual Studio shell
+        if: runner.os == 'Windows'
+        uses: egor-tensin/vs-shell@v2
+        with:
+          arch: x64
+
+      - name: Build Unix HDF5 dependency
+        if: runner.os != 'Windows'
+        run: |
+          export HDF5_ROOT="${RUNNER_TEMP}/hdf5-${HDF5_VERSION}-install"
+          curl -fsSLo hdf5-$HDF5_VERSION.tar.gz "https://github.com/HDFGroup/hdf5/releases/download/$HDF5_VERSION/hdf5-$HDF5_VERSION.tar.gz"
+          gunzip < hdf5-$HDF5_VERSION.tar.gz | tar xf -
+          python -m pip install "cmake<4" ninja
+          python -m cmake -S "hdf5-$HDF5_VERSION" -B hdf5-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${HDF5_ROOT}" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_TESTING=OFF \
+            -DHDF5_BUILD_TOOLS=OFF \
+            -DHDF5_BUILD_EXAMPLES=OFF \
+            -DHDF5_BUILD_HL_LIB=OFF \
+            -DHDF5_BUILD_CPP_LIB=OFF \
+            -DHDF5_BUILD_FORTRAN=OFF \
+            -DHDF5_ENABLE_Z_LIB_SUPPORT=OFF \
+            -DHDF5_ENABLE_SZIP_SUPPORT=OFF
+          python -m cmake --build hdf5-build --target install --config Release
+          echo "HDF5_ROOT=${HDF5_ROOT}" >> "${GITHUB_ENV}"
+
+      - name: Build Windows HDF5 dependency
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $hdf5Version = $env:HDF5_VERSION
+          $hdf5Root = Join-Path $env:RUNNER_TEMP "hdf5-$hdf5Version-install"
+          $archive = "hdf5-$hdf5Version.tar.gz"
+          Invoke-WebRequest -Uri "https://github.com/HDFGroup/hdf5/releases/download/$hdf5Version/hdf5-$hdf5Version.tar.gz" -OutFile $archive
+          tar -xzf $archive
+          python -m pip install "cmake<4" ninja
+          python -m cmake -S "hdf5-$hdf5Version" -B hdf5-build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX="$hdf5Root" `
+            -DBUILD_SHARED_LIBS=OFF `
+            -DBUILD_TESTING=OFF `
+            -DHDF5_BUILD_TOOLS=OFF `
+            -DHDF5_BUILD_EXAMPLES=OFF `
+            -DHDF5_BUILD_HL_LIB=OFF `
+            -DHDF5_BUILD_CPP_LIB=OFF `
+            -DHDF5_BUILD_FORTRAN=OFF `
+            -DHDF5_ENABLE_Z_LIB_SUPPORT=OFF `
+            -DHDF5_ENABLE_SZIP_SUPPORT=OFF
+          python -m cmake --build hdf5-build --target install --config Release
+          "HDF5_ROOT=$hdf5Root" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CMAKE_PREFIX_PATH=$hdf5Root" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "$hdf5Root\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Install build frontend
+        run: python -m pip install --upgrade pip build
+
+      - name: Install Linux wheel repair tool
+        if: runner.os == 'Linux'
+        run: python -m pip install auditwheel
+
+      - name: Install macOS wheel repair tool
+        if: runner.os == 'macOS'
+        run: python -m pip install delocate
+
+      - name: Install Windows wheel repair tool
+        if: runner.os == 'Windows'
+        run: python -m pip install delvewheel
+
+      - name: Build wheel
+        if: runner.os != 'Windows'
+        run: python -m build --wheel --outdir dist --config-setting=setup-args="-Dhdf5-root=${HDF5_ROOT}"
+
+      - name: Build wheel
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: python -m build --wheel --outdir dist --config-setting=setup-args="-Dhdf5-root=$env:HDF5_ROOT" --config-setting=setup-args="-Dhdf5-static=true"
+
+      - name: Bundle Linux wheel dependencies
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p wheelhouse
+          for whl in dist/*.whl; do
+            auditwheel repair "$whl" -w wheelhouse/
+          done
+
+      - name: Bundle macOS wheel dependencies
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p wheelhouse
+          for whl in dist/*.whl; do
+            delocate-wheel -w wheelhouse "$whl"
+          done
+
+      - name: Bundle Windows wheel dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force wheelhouse | Out-Null
+          $addPathArgs = @()
+          if (Test-Path "$env:HDF5_ROOT\bin") {
+            $addPathArgs = @('--add-path', "$env:HDF5_ROOT\bin")
+          }
+          Get-ChildItem dist\*.whl | ForEach-Object {
+            python -m delvewheel repair @addPathArgs --wheel-dir wheelhouse $_.FullName
+          }
+
+      - name: Install built wheel
+        shell: bash
+        run: |
+          python -m pip install "$(pwd)"/wheelhouse/*.whl
+
+      - name: Import smoke test
+        shell: bash
+        run: |
+          cd "${RUNNER_TEMP}"
+          python -c "import CGNS; import CGNS.MAP; import CGNS.PAT; import CGNS.VAL; import CGNS.APP; print('pyCGNS import smoke test OK')"
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+
+  build-sdist:
+    name: Build sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - name: Install Linux HDF5 dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libhdf5-dev pkg-config
+      - name: Install build frontend
+        run: python -m pip install --upgrade pip build
+      - name: Build sdist
+        run: python -m build --sdist --outdir dist
+      - name: Upload sdist artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: [build-wheel, build-sdist]
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Check distributions
+        run: |
+          python -m pip install --upgrade pip twine
+          python -m twine check dist/*
+      - name: Upload distributions to PyPI
+        env:
+          TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+        run: python -m twine upload dist/*
