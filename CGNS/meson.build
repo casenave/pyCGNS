@@ -112,9 +112,13 @@ np_dep = declare_dependency(include_directories: inc_np, compile_args: numpy_nod
 
 hdf5_root = get_option('hdf5-root')
 if hdf5_root != ''
+  hdf5_dependencies = [cc.find_library('hdf5', dirs: hdf5_root / 'lib', required: true)]
+  if host_machine.system() == 'windows' and get_option('hdf5-static')
+    hdf5_dependencies += cc.find_library('shlwapi', required: true)
+  endif
   hdf5_dep = declare_dependency(
     include_directories: include_directories(hdf5_root / 'include'),
-    dependencies: cc.find_library('hdf5', dirs: hdf5_root / 'lib', required: true),
+    dependencies: hdf5_dependencies,
   )
 else
   hdf5_dep = dependency('hdf5', language: 'c')
