@@ -31,34 +31,45 @@ jobs:
         with:
           arch: x64
 
-      - name: Install Linux HDF5 dependency
-        if: runner.os == 'Linux'
+      - name: Build Unix HDF5 dependency
+        if: runner.os != 'Windows'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libhdf5-dev pkg-config
+          export HDF5_VERSION=1.12.1
+          export HDF5_ROOT="${RUNNER_TEMP}/hdf5-${HDF5_VERSION}-install"
+          curl -fsSLO "https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-${HDF5_VERSION%.*}/hdf5-$HDF5_VERSION/src/hdf5-$HDF5_VERSION.tar.gz"
+          gunzip < hdf5-$HDF5_VERSION.tar.gz | tar xf -
+          cd hdf5-$HDF5_VERSION
+          export CFLAGS="-O3 -fPIC"
+          ./configure --prefix="${HDF5_ROOT}" --enable-static --disable-shared --enable-largefile --disable-fortran --disable-hl --without-szlib --without-zlib
+          make -j2
+          make install
+          echo "HDF5_ROOT=${HDF5_ROOT}" >> "${GITHUB_ENV}"
 
-      - name: Install macOS HDF5 dependency
-        if: runner.os == 'macOS'
-        run: |
-          brew untap aws/tap || true
-          brew install hdf5 pkg-config
-
-      - name: Install Windows HDF5 dependency
+      - name: Build Windows HDF5 dependency
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          vcpkg install hdf5:x64-windows
-          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
-          if (-not $vcpkgRoot) {
-            $vcpkgRoot = 'C:\vcpkg'
-          }
-          $hdf5Root = Join-Path $vcpkgRoot 'installed\x64-windows'
-          if (-not (Test-Path (Join-Path $hdf5Root 'include\hdf5.h'))) {
-            throw "Unable to find vcpkg HDF5 installation under $hdf5Root"
-          }
+          $hdf5Version = '1.12.1'
+          $hdf5Root = Join-Path $env:RUNNER_TEMP "hdf5-$hdf5Version-install"
+          $archive = "hdf5-$hdf5Version.tar.gz"
+          Invoke-WebRequest -Uri "https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.12/hdf5-$hdf5Version/src/$archive" -OutFile $archive
+          tar -xzf $archive
+          python -m pip install ninja
+          cmake -S "hdf5-$hdf5Version" -B hdf5-build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX="$hdf5Root" `
+            -DBUILD_SHARED_LIBS=ON `
+            -DBUILD_TESTING=OFF `
+            -DHDF5_BUILD_TOOLS=OFF `
+            -DHDF5_BUILD_EXAMPLES=OFF `
+            -DHDF5_BUILD_HL_LIB=OFF `
+            -DHDF5_BUILD_CPP_LIB=OFF `
+            -DHDF5_BUILD_FORTRAN=OFF `
+            -DHDF5_ENABLE_Z_LIB_SUPPORT=OFF `
+            -DHDF5_ENABLE_SZIP_SUPPORT=OFF
+          cmake --build hdf5-build --target install --config Release
           "HDF5_ROOT=$hdf5Root" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CMAKE_PREFIX_PATH=$hdf5Root" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "PKG_CONFIG_PATH=$hdf5Root\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Append
           "$hdf5Root\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Install build frontend
@@ -78,7 +89,7 @@ jobs:
 
       - name: Build wheel
         if: runner.os != 'Windows'
-        run: python -m build --wheel --outdir dist
+        run: python -m build --wheel --outdir dist --config-setting=setup-args="-Dhdf5-root=${HDF5_ROOT}"
 
       - name: Build wheel
         if: runner.os == 'Windows'
@@ -121,15 +132,15 @@ jobs:
           cd "${RUNNER_TEMP}"
           python -c "import CGNS; import CGNS.MAP; import CGNS.PAT; import CGNS.VAL; import CGNS.APP; print('pyCGNS import smoke test OK')"
 
-      - name: Upload repaired wheel artifact
+      - name: Upload bundled wheel artifact
         uses: actions/upload-artifact@v7
         with:
-          name: repaired-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
+          name: bundled-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
           path: wheelhouse/*.whl
           if-no-files-found: error
 
   build-sdist:
-    name: Build sdist
+    name: Validate source distribution
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
