@@ -54,7 +54,7 @@ jobs:
           $archive = "hdf5-$hdf5Version.tar.gz"
           Invoke-WebRequest -Uri "https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.12/hdf5-$hdf5Version/src/$archive" -OutFile $archive
           tar -xzf $archive
-          python -m pip install "cmake<4" ninja
+          python -m pip install "cmake>=3.26,<3.27" ninja
           python -m cmake -S "hdf5-$hdf5Version" -B hdf5-build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_INSTALL_PREFIX="$hdf5Root" `
