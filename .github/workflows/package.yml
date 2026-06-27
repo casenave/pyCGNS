@@ -38,7 +38,7 @@ jobs:
       - name: Install macOS HDF5 dependency
         if: runner.os == 'macOS'
         run: |
-          brew update
+          brew untap aws/tap || true
           brew install hdf5 pkg-config
 
       - name: Install Windows HDF5 dependency
